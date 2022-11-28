@@ -1,0 +1,230 @@
+[General]
+num_weeks = 3
+weekend_full_work_penalty = 10
+first_day = 0 # First day is monday: NOT_IMPLEMENTED
+
+# {{{1 Shift
+[[Shift]]
+id = "o"
+name = "休"
+
+[[Shift]]
+id = "x"
+name = "轮"
+
+[[Shift]]
+id = "dr"
+name = "DR"
+demands = [3, 3, 3, 3, 3, 2, 1] # Monday to Sunday
+excess_penalty = [2, 2, 2, 2, 2, 4, 4] # Penalty for exceeding cover demands
+penalty_type = "squared" # Penalty type, `linear` or `squared`
+
+[[Shift]]
+id = "ct"
+name = "CT"
+demands = [2, 2, 2, 2, 2, 1, 1]
+excess_penalty = [2, 2, 2, 2, 2, 4, 4]
+penalty_type = "squared"
+
+
+# {{{1 Employee
+[[Employee]]
+id = "rhn"
+name = "海"
+profile_id = "year1"
+
+[[Employee]]
+id = "xzh"
+name = "祯"
+profile_id = "year1"
+
+[[Employee]]
+id = "yxl"
+name = "莲"
+profile_id = "year1"
+
+[[Employee]]
+id = "lk"
+name = "可"
+profile_id = "year1"
+
+[[Employee]]
+id = "ldw"
+name = "定"
+profile_id = "year1"
+
+[[Employee]]
+id = "psh"
+name = "诗"
+profile_id = "dr-limited"
+
+[[Employee]]
+id = "jwy"
+name = "溢"
+profile_id = "year2"
+
+[[Employee]]
+id = "zym"
+name = "鸣"
+profile_id = "year2"
+
+[[Employee]]
+id = "lys"
+name = "升"
+profile_id = "year2"
+
+[[Employee]]
+id = "lj"
+name = "静"
+profile_id = "year2"
+
+[[Employee]]
+id = "fyc"
+name = "傅"
+profile_id = "year2"
+
+# {{{1 Profile
+[[Profile]]
+id = "year1"
+shifts = [
+    {
+        shift_id = "o",
+        hard_min = 1,
+        hard_max = 3,
+        soft_min = 2,
+        soft_max = 2,
+        min_penalty = 50,
+        max_penalty = 20
+    },
+    {
+        shift_id = "dr",
+        hard_min = 1,
+        hard_max = 5,
+        soft_min = 1,
+        soft_max = 5,
+        min_penalty = 3,
+        max_penalty = 0
+    }
+]
+
+[[Profile]]
+id = "extern"
+shifts = [
+    {
+        shift_id = "x",
+        hard_min = 7,
+        hard_max = 7,
+        soft_min = 7,
+        soft_max = 7,
+        min_penalty = 0,
+        max_penalty = 0
+    }
+]
+
+[[Profile]]
+id = "dr-limited"
+shifts = [
+    {
+        shift_id = "o",
+        hard_min = 3,
+        hard_max = 5,
+        soft_min = 4,
+        soft_max = 4,
+        min_penalty = 64,
+        max_penalty = 64
+    },
+    {
+        shift_id = "dr",
+        hard_min = 1,
+        hard_max = 3,
+        soft_min = 1,
+        soft_max = 5,
+        min_penalty = 3,
+        max_penalty = 6
+    }
+]
+
+[[Profile]]
+id = "year2"
+shifts = [
+    {
+        shift_id = "o",
+        hard_min = 1,
+        hard_max = 3,
+        soft_min = 2,
+        soft_max = 2,
+        min_penalty = 64,
+        max_penalty = 64
+    },
+    {
+        shift_id = "ct",
+        hard_min = 1,
+        hard_max = 5,
+        soft_min = 1,
+        soft_max = 5,
+        min_penalty = 3,
+        max_penalty = 0
+    },
+    {
+        shift_id = "dr",
+        hard_min = 0,
+        hard_max = 2,
+        soft_min = 0,
+        soft_max = 0,
+        min_penalty = 0,
+        max_penalty = 8
+    }
+]
+
+
+# {{{1 FixedAssignment
+#[[FixedAssignment]]
+#employee = "a"
+#shift = "o"
+#day = 0
+
+# {{{1 Request
+[[Request]]
+# rhn does not want to work on day 2
+employee = "rhn"
+shift = "o"
+day = 2
+penalty = -2
+
+# {{{1 ShiftConstraint
+# Shift constraints on continuous sequence
+
+# One or two consecutive days of rest, this is a hard constraint.
+[[ShiftConstraint]]
+shift = "o"
+hard_min = 1
+hard_max = 2
+soft_min = 1
+soft_max = 2
+min_penalty = 0
+max_penalty = 0
+
+# Between 2 and 3 consecutive days of night shifts
+#[[ShiftConstraint]]
+#shift = "n"
+#hard_min = 1
+#hard_max = 4
+#soft_min = 2
+#soft_max = 3
+#min_penalty = 20
+#max_penalty = 5
+
+
+# {{{1 PenalizedTransitions
+#[[PenalizedTransition]]
+#shift_prev = "a"
+#shift_next = "n"
+#penalty = 4
+
+#[[PenalizedTransition]]
+## Night to morning is forbidden
+#shift_prev = "n"
+#shift_next = "m"
+#penalty = 0
+
+# vim: foldmethod=marker filetype=toml
