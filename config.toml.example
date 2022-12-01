@@ -13,19 +13,41 @@ id = "x"
 name = "轮"
 
 [[Shift]]
-id = "dr"
-name = "DR"
+id = "dr-east"
+name = "De" # 东院
 demands = [3, 3, 3, 3, 3, 2, 1] # Monday to Sunday
-excess_penalty = [2, 2, 2, 2, 2, 4, 4] # Penalty for exceeding cover demands
+excess_penalty = [4, 4, 4, 4, 4, 8, 8] # Penalty for exceeding cover demands
 penalty_type = "squared" # Penalty type, `linear` or `squared`
+
+[[Shift]]
+id = "dr-west"
+name = "Dw" # 西院
+demands = [1, 1, 1, 1, 1, 0, 0]
+excess_penalty = [9, 9, 9, 9, 9, 100, 100]
+
+[[Shift]]
+id = "dr-south"
+name = "Ds" # 南院
+demands = [1, 1, 1, 1, 1, 0, 0]
+excess_penalty = [9, 9, 9, 9, 9, 100, 100]
 
 [[Shift]]
 id = "ct"
 name = "CT"
 demands = [2, 2, 2, 2, 2, 1, 1]
 excess_penalty = [2, 2, 2, 2, 2, 4, 4]
-penalty_type = "squared"
 
+[[Shift]]
+id = "ct-west-night"
+name = "Wn"
+demands = [1, 1, 1, 1, 1, 1, 1]
+excess_penalty = [100, 100, 100, 100, 100, 100, 100]
+
+[[Shift]]
+id = "night-rest"
+name = "nr"
+demands = [0, 0, 0, 0, 0, 0, 0]
+excess_penalty = [100, 100, 100, 100, 100, 100, 100]
 
 # {{{1 Employee
 [[Employee]]
@@ -97,12 +119,30 @@ shifts = [
         max_penalty = 20
     },
     {
-        shift_id = "dr",
+        shift_id = "dr-east",
         hard_min = 1,
         hard_max = 5,
         soft_min = 1,
         soft_max = 5,
         min_penalty = 3,
+        max_penalty = 0
+    },
+    {
+        shift_id = "dr-west",
+        hard_min = 0,
+        hard_max = 1,
+        soft_min = 0,
+        soft_max = 0,
+        min_penalty = 0,
+        max_penalty = 0
+    },
+    {
+        shift_id = "dr-south",
+        hard_min = 0,
+        hard_max = 1,
+        soft_min = 0,
+        soft_max = 0,
+        min_penalty = 0,
         max_penalty = 0
     }
 ]
@@ -134,7 +174,7 @@ shifts = [
         max_penalty = 64
     },
     {
-        shift_id = "dr",
+        shift_id = "dr-east",
         hard_min = 1,
         hard_max = 3,
         soft_min = 1,
@@ -157,6 +197,15 @@ shifts = [
         max_penalty = 64
     },
     {
+        shift_id = "night-rest",
+        hard_min = 0,
+        hard_max = 2,
+        soft_min = 0,
+        soft_max = 1,
+        min_penalty = 0,
+        max_penalty = 8
+    },
+    {
         shift_id = "ct",
         hard_min = 1,
         hard_max = 5,
@@ -166,13 +215,40 @@ shifts = [
         max_penalty = 0
     },
     {
-        shift_id = "dr",
+        shift_id = "ct-west-night",
+        hard_min = 0,
+        hard_max = 2,
+        soft_min = 0,
+        soft_max = 1,
+        min_penalty = 0,
+        max_penalty = 8
+    },
+    {
+        shift_id = "dr-east",
         hard_min = 0,
         hard_max = 2,
         soft_min = 0,
         soft_max = 0,
         min_penalty = 0,
         max_penalty = 8
+    },
+    {
+        shift_id = "dr-west",
+        hard_min = 0,
+        hard_max = 1,
+        soft_min = 0,
+        soft_max = 0,
+        min_penalty = 0,
+        max_penalty = 12
+    },
+    {
+        shift_id = "dr-south",
+        hard_min = 0,
+        hard_max = 1,
+        soft_min = 0,
+        soft_max = 0,
+        min_penalty = 0,
+        max_penalty = 12
     }
 ]
 
@@ -189,7 +265,7 @@ shifts = [
 employee = "rhn"
 shift = "o"
 day = 2
-penalty = -2
+gain = 2
 
 # {{{1 ShiftConstraint
 # Shift constraints on continuous sequence
@@ -216,10 +292,10 @@ max_penalty = 0
 
 
 # {{{1 PenalizedTransitions
-#[[PenalizedTransition]]
-#shift_prev = "a"
-#shift_next = "n"
-#penalty = 4
+[[PenalizedTransition]]
+shift_prev = "ct-west-night"
+shift_next = "night-rest"
+penalty = -250
 
 #[[PenalizedTransition]]
 ## Night to morning is forbidden

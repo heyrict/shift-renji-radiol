@@ -245,7 +245,7 @@ def solve_shift_scheduling(params, output_proto):
         e = find_index(employees, rq["employee"], seqname="employees")
         s = find_index(shifts, rq["shift"], seqname="shifts")
         d = rq["day"]
-        cost = rq["penalty"]
+        cost = -rq["gain"]
         obj_bool_vars.append(work[e, s, d])
         obj_bool_coeffs.append(cost)
 
