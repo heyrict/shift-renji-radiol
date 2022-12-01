@@ -1,0 +1,5 @@
+# Config files
+config*.toml
+
+# Output files
+outputs*

@@ -13,8 +13,11 @@
 # limitations under the License.
 """Creates a shift scheduling problem and solves it."""
 
+import os
 import toml
+from datetime import datetime, timedelta
 from typing import Any
+from dateutil.parser import parse
 
 from absl import app
 from absl import flags
@@ -22,12 +25,12 @@ from absl import flags
 from ortools.sat.python import cp_model
 from google.protobuf import text_format
 
+import pandas as pd
+
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string('config', 'config.toml',
                     'Config toml file')
-flags.DEFINE_string('output_proto', '',
-                    'Output file to write the cp_model proto to.')
 flags.DEFINE_string('params', 'max_time_in_seconds:30.0',
                     'Sat solver parameters.')
 
@@ -195,12 +198,13 @@ def add_soft_sum_constraint(model, works, hard_min, soft_min, min_cost,
     return cost_variables, cost_coefficients
 
 
-def solve_shift_scheduling(params, output_proto):
+def solve_shift_scheduling(params, config_file):
     """Solves the shift scheduling problem."""
-    with open(FLAGS.config, 'r') as f:
+    with open(config_file, 'r') as f:
         config = toml.decoder.load(f)
 
     # Data
+    general = config.get("General", {})
     shifts: list[Any] = config["Shift"]
     employees: list[Any] = config["Employee"]
     fixed_assignments: list[Any] = config.get("FixedAssignment", [])
@@ -211,8 +215,14 @@ def solve_shift_scheduling(params, output_proto):
 
     num_employees = len(employees)
     num_shifts = len(shifts)
-    num_weeks = config.get("General", {}).get("num_weeks", 3)
+    num_weeks = general.get("num_weeks", 3)
     num_days = num_weeks * 7
+
+    # Validation
+    now = datetime.now()
+    first_day_str: str = general.get("first_day", now.isoformat())
+    first_day: datetime = parse(first_day_str, yearfirst=True)
+    assert first_day.isoweekday() == 1, "General.first_day should be Monday"
 
     model = cp_model.CpModel()
 
@@ -300,27 +310,42 @@ def solve_shift_scheduling(params, output_proto):
     for pt in penalized_transitions:
         previous_shift = find_index(shifts, pt["shift_prev"], seqname="shifts")
         next_shift = find_index(shifts, pt["shift_next"], seqname="shifts")
-        cost = pt["penalty"]
+        cost = pt.get("penalty", None)
+        gain = pt.get("gain", None)
         for e, employee in enumerate(employees):
             for d in range(num_days - 1):
-                transition = [
-                    work[e, previous_shift, d].Not(), work[e, next_shift,
-                                                           d + 1].Not()
-                ]
-                if cost == 0:
-                    model.AddBoolOr(transition)
-                else:
-                    trans_var = model.NewBoolVar(
-                        'transition (employee=%s, day=%i)' % (employee["name"], d))
-                    transition.append(trans_var)
-                    model.AddBoolOr(transition)
-                    obj_bool_vars.append(trans_var)
-                    obj_bool_coeffs.append(cost)
+                if cost is not None:
+                    transition = [
+                        work[e, previous_shift, d].Not(), work[e, next_shift,
+                                                               d + 1].Not()
+                    ]
+                    if cost == 0:  # Forbidden
+                        model.AddBoolOr(transition)
+                    else:  # Penalize
+                        trans_var = model.NewBoolVar(
+                            'transition_cost (employee=%s, day=%i)' % (employee["name"], d))
+                        transition.append(trans_var)
+                        model.AddBoolOr(transition)
+                        obj_bool_vars.append(trans_var)
+                        obj_bool_coeffs.append(cost)
+                if gain is not None:
+                    transition = [
+                        work[e, previous_shift, d].Not(),
+                        work[e, next_shift, d + 1],
+                    ]
+                    if gain == 0:  # Ensure
+                        model.AddBoolXOr(transition)
+                    else:  # Gain
+                        trans_var = model.NewBoolVar(
+                            'transition_gain (employee=%s, day=%i)' % (employee["name"], d))
+                        transition.append(trans_var)
+                        model.AddBoolXOr(transition)
+                        obj_bool_vars.append(trans_var)
+                        obj_bool_coeffs.append(cost)
 
     # Penalize double work or double rest at weekend
     # Assume shift id = 0 for rest
-    weekend_full_work_penalty = config.get(
-        "General", {}).get("weekend_full_work_penalty", 0)
+    weekend_full_work_penalty = general.get("weekend_full_work_penalty", 0)
     if weekend_full_work_penalty:
         for e, employee in enumerate(employees):
             d = 5
@@ -391,11 +416,6 @@ def solve_shift_scheduling(params, output_proto):
         sum(obj_int_vars[i] * obj_int_coeffs[i]
             for i in range(len(obj_int_vars))))
 
-    if output_proto:
-        print('Writing proto to %s' % output_proto)
-        with open(output_proto, 'w') as text_file:
-            text_file.write(str(model))
-
     # Solve the model.
     solver = cp_model.CpSolver()
     if params:
@@ -403,42 +423,112 @@ def solve_shift_scheduling(params, output_proto):
     solution_printer = cp_model.ObjectiveSolutionPrinter()
     status = solver.Solve(model, solution_printer)
 
-    # Print solution.
+    output_dir: str = general.get("output_dir", "outputs_%Y-%m-%d")
+    output_dir = first_day.strftime(output_dir)
+    if not os.path.exists(output_dir):
+        os.mkdir(output_dir)
+    output_proto = os.path.join(output_dir, "proto.txt")
+    print('Writing proto to %s' % output_proto)
+    with open(output_proto, 'w') as text_file:
+        text_file.write(str(model))
+
     if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
-        print()
-        header = '           '
-        for w in range(num_weeks):
-            header += 'Mo Tu We Th Fr Sa Su '
-        print(header)
+        # Print solution.
+        with open(os.path.join(output_dir, "vars.log"), 'w') as f:
+            if general.get("print", True):
+                print()
+                header = '           '
+                for w in range(num_weeks):
+                    header += 'Mo Tu We Th Fr Sa Su '
+                print(header)
+                for e, employee in enumerate(employees):
+                    schedule = ''
+                    for d in range(num_days):
+                        for s in range(num_shifts):
+                            if solver.BooleanValue(work[e, s, d]):
+                                schedule += shifts[s]["name"] + ' '
+                    print('worker %s: %s' % (employee["name"], schedule))
+                print()
+            for i, var in enumerate(obj_bool_vars):
+                if solver.BooleanValue(var):
+                    penalty = obj_bool_coeffs[i]
+                    if penalty > 0:
+                        print('%s violated, penalty=%i' %
+                              (var.Name(), penalty), file=f)
+                    else:
+                        print('%s fulfilled, gain=%i' %
+                              (var.Name(), -penalty), file=f)
+                else:
+                    penalty = obj_bool_coeffs[i]
+                    if penalty > 0:
+                        print('%s not violated, penalty=%i' %
+                              (var.Name(), penalty), file=f)
+                    else:
+                        print('%s not fulfilled, gain=%i' %
+                              (var.Name(), -penalty), file=f)
+
+            for i, var in enumerate(obj_int_vars):
+                if solver.Value(var) > 0:
+                    print('%s violated by %i, linear penalty=%i' %
+                          (var.Name(), solver.Value(var), obj_int_coeffs[i]), file=f)
+
+        # Save output to spreadsheet
+        timecol_format = general.get("timecol_format", "%m/%d (%a)")
+        # - Calendar format
+        df = pd.DataFrame(
+            columns=[(datetime(first_day.year, first_day.month, first_day.day) +
+                     timedelta(days=i)).strftime(timecol_format)
+                     for i in range(num_weeks * 7)],
+            index=[e["name"] for e in employees],
+        )
+        for e in range(num_employees):
+            for d in range(num_days):
+                for s, shift in enumerate(shifts):
+                    if solver.BooleanValue(work[e, s, d]):
+                        df.iloc[e, d] = shift["name"]
+        df.to_excel(os.path.join(output_dir, "calendar.xlsx"))
+
+        # - Plain format
+        df = pd.DataFrame(
+            index=["employee_name", "shift_name",
+                   "date", "employee_id", "shift_id"],
+        )
         for e, employee in enumerate(employees):
-            schedule = ''
+            for d in range(num_days):
+                for s, shift in enumerate(shifts):
+                    if solver.BooleanValue(work[e, s, d]):
+                        df = pd.concat([
+                            df,
+                            pd.Series({
+                                "employee_id": employee["id"],
+                                "employee_name": employee["name"],
+                                "shift_id": shift["id"],
+                                "shift_name": shift["name"],
+                                "date": (datetime(first_day.year, first_day.month, first_day.day)
+                                         + timedelta(days=d)).strftime("%Y-%m-%d"),
+                            })
+                        ], axis=1)
+        df = df.T
+        df.to_excel(os.path.join(output_dir, "plain.xlsx"))
+
+        # - Compact format
+        df = pd.DataFrame(
+            columns=[(datetime(first_day.year, first_day.month, first_day.day) +
+                     timedelta(days=i)).strftime(timecol_format)
+                     for i in range(num_weeks * 7)],
+            index=[s["name"] for s in shifts],
+        )
+        for d in range(num_days):
+            for s in range(num_shifts):
+                df.iloc[s, d] = []
+        for e, employee in enumerate(employees):
             for d in range(num_days):
                 for s in range(num_shifts):
                     if solver.BooleanValue(work[e, s, d]):
-                        schedule += shifts[s]["name"] + ' '
-            print('worker %s: %s' % (employee["name"], schedule))
-        print()
-        print('Penalties:')
-        for i, var in enumerate(obj_bool_vars):
-            if solver.BooleanValue(var):
-                penalty = obj_bool_coeffs[i]
-                if penalty > 0:
-                    print('  %s violated, penalty=%i' % (var.Name(), penalty))
-                else:
-                    print('  %s fulfilled, gain=%i' % (var.Name(), -penalty))
-            else:
-                penalty = obj_bool_coeffs[i]
-                if penalty > 0:
-                    print('  %s not violated, penalty=%i' %
-                          (var.Name(), penalty))
-                else:
-                    print('  %s not fulfilled, gain=%i' %
-                          (var.Name(), -penalty))
-
-        for i, var in enumerate(obj_int_vars):
-            if solver.Value(var) > 0:
-                print('  %s violated by %i, linear penalty=%i' %
-                      (var.Name(), solver.Value(var), obj_int_coeffs[i]))
+                        df.iloc[s, d].append(
+                            employee.get("abbr", employee["name"]))
+        df = df.applymap(lambda x: general.get("compact_sep", ';').join(x))
+        df.to_excel(os.path.join(output_dir, "compact.xlsx"))
 
     print()
     print('Statistics')
@@ -449,7 +539,7 @@ def solve_shift_scheduling(params, output_proto):
 
 
 def main(_):
-    solve_shift_scheduling(FLAGS.params, FLAGS.output_proto)
+    solve_shift_scheduling(FLAGS.params, FLAGS.config)
 
 
 if __name__ == '__main__':

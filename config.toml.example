@@ -1,7 +1,11 @@
 [General]
-num_weeks = 3
+first_day = "2022-12-05" # First day should be Monday
+num_weeks = 1
 weekend_full_work_penalty = 10
-first_day = 0 # First day is monday: NOT_IMPLEMENTED
+output_dir = "outputs_%Y-%m-%d"
+timecol_format = "%m/%d (%a)"
+print = false # Print to shell if all names were 2-character in width
+compact_sep = "" # Seperation symbol used in compact output
 
 # {{{1 Shift
 [[Shift]]
@@ -199,7 +203,7 @@ shifts = [
     {
         shift_id = "night-rest",
         hard_min = 0,
-        hard_max = 2,
+        hard_max = 3,
         soft_min = 0,
         soft_max = 1,
         min_penalty = 0,
@@ -295,7 +299,7 @@ max_penalty = 0
 [[PenalizedTransition]]
 shift_prev = "ct-west-night"
 shift_next = "night-rest"
-penalty = -250
+gain = 0
 
 #[[PenalizedTransition]]
 ## Night to morning is forbidden
